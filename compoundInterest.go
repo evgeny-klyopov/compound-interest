@@ -12,16 +12,17 @@ type compoundInterest struct {
 	countMonthDeposit int
 	percentMonth      float64
 	coefficient       float64
+	month             int
 }
 
 type Predictor interface {
 	Calculate() []Prediction
 
-	getDate(month int) time.Time
+	getDate(countMonth int) time.Time
 	getAmount(month int) float64
 	getPercent(amount float64, percent float64) float64
-	getPrediction(month int) Prediction
-	updateParamsWithInflation()
+	getPrediction(countMonth int) Prediction
+	updateParamsWithInflation(initialPayment float64)
 }
 
 func New(params Params) Predictor {
@@ -33,6 +34,7 @@ func New(params Params) Predictor {
 		params:            params,
 		countMonthDeposit: int(params.InvestmentTermInYears * numberOfMonthsInYear),
 		percentMonth:      percentMonth,
+		month:             1,
 		coefficient:       1 + percentMonth,
 	}
 
@@ -41,11 +43,11 @@ func New(params Params) Predictor {
 
 func (c *compoundInterest) Calculate() []Prediction {
 	result := make([]Prediction, c.countMonthDeposit, c.countMonthDeposit)
-	for month := 1; month <= c.countMonthDeposit; month++ {
-		result[month-1] = c.getPrediction(month)
-
-		if month%int(numberOfMonthsInYear) == 0 {
-			c.updateParamsWithInflation()
+	for countMonth := 1; countMonth <= c.countMonthDeposit; countMonth++ {
+		result[countMonth-1] = c.getPrediction(countMonth)
+		c.month++
+		if countMonth%int(numberOfMonthsInYear) == 0 {
+			c.updateParamsWithInflation(result[countMonth-1].Amount)
 		}
 	}
 
@@ -68,10 +70,10 @@ func (c *compoundInterest) getPercent(amount float64, percent float64) float64 {
 	return (amount / 100) * percent
 }
 
-func (c *compoundInterest) getPrediction(month int) Prediction {
+func (c *compoundInterest) getPrediction(countMonth int) Prediction {
 	var prediction Prediction
-	prediction.Date = c.getDate(month)
-	prediction.Amount = c.getAmount(month)
+	prediction.Date = c.getDate(countMonth)
+	prediction.Amount = c.getAmount(c.month)
 	prediction.MonthlyDividend = c.getPercent(prediction.Amount, c.params.AvgPercentDividend) / numberOfMonthsInYear
 	prediction.MonthlyPayment = c.params.MonthlyPayment
 	prediction.AvgPercentDividend = c.params.AvgPercentDividend
@@ -79,7 +81,9 @@ func (c *compoundInterest) getPrediction(month int) Prediction {
 	return prediction
 }
 
-func (c *compoundInterest) updateParamsWithInflation() {
+func (c *compoundInterest) updateParamsWithInflation(initialPayment float64) {
+	c.params.InitialPayment = initialPayment
+	c.month = 1
 	c.params.MonthlyPayment = c.getPercent(c.params.MonthlyPayment, c.params.AnnualPercentageIncreaseInMonthlyPayment) +
 		c.params.MonthlyPayment
 	c.params.AvgPercentDividend = c.getPercent(c.params.AvgPercentDividend, c.params.AnnualPercentageIncreaseDividend) +
